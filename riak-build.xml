@@ -1,0 +1,83 @@
+<project name="Riak Runner" default="start" basedir=".">
+    <description>
+        Ant build file that downloads, installs, configures and runs Riak.
+    </description>
+
+  <property name="working-dir" location="target/riak"/>
+  <property name="download"  location="${working-dir}"/>
+  <property name="riak-dir"  location="${working-dir}/riak-1.2.0"/>
+  <property name="riak-bin"  location="${riak-dir}/bin/riak"/>
+  <property name="riak-zipname" value="riak-1.2.0-osx-x86_64.tar.gz"/>
+  <property name="riak-zip" value="${download}/${riak-zipname}"/>
+  <property name="riak-config"  value="${riak-dir}/etc/app.config"/>
+  <property name="riak-backend"  value="riak_kv_memory_backend"/>
+
+  <target name="init">
+    <tstamp/>
+    <mkdir dir="${download}"/>
+  </target>
+
+  <target name="-check-download">
+  	<available property="riak-downloaded" file="${riak-zip}"/>
+  </target>
+
+  <target name="download" depends="init, -check-download" unless="riak-downloaded">
+	<get src="http://downloads.basho.com.s3-website-us-east-1.amazonaws.com/riak/CURRENT/osx/10.4/${riak-zipname}" 
+    	dest="${download}" 
+    	verbose="true"
+    	usetimestamp="true"/>
+  </target>
+  
+  <target name="-check-install">
+  	<available property="riak-installed" file="${riak-bin}"/>
+  </target>
+  
+  <target name="install" depends="download, -check-install" unless="riak-installed">
+    <!--<untar src="${riak-zip}" dest="${download}" compression="gzip"/>-->
+    <exec executable="tar" dir="${download}">
+      <arg line="xvzf ${riak-zip}"/>
+    </exec>
+  </target>
+
+  <target name="-check-configuration">
+    <condition property="riak-configured">
+      <resourcecontains resource="${riak-config}" substring="${riak-backend}"/>
+    </condition>
+  </target>
+
+  <target name="configure"  depends="-check-configuration" unless="riak-configured">
+    <replace file="${riak-config}" token="riak_kv_bitcask_backend" value="${riak-backend}"/>
+  </target>
+
+  <target name="-check-running">
+    <condition property="riak-running">
+      <http url="http://127.0.0.1:8098/"/>
+    </condition>
+  </target>
+  
+  <target name="start" depends="install, configure, -check-running" unless="riak-running" description="Starts the locally downloaded version of riak with an in-memory storage backend.">
+    <exec executable="ulimit">
+      <arg line="-n 1024"/>
+    </exec>
+	<chmod file="${riak-bin}" perm="755"/>
+	<exec dir="${riak-dir}" executable="${riak-bin}">
+	  <arg value="start"/>
+	</exec>
+  </target>
+  
+  <target name="stop" depends="-check-running" if="riak-running" description="Stops the running riak instance (if any).">
+    <exec executable="ulimit">
+      <arg line="-n 1024"/>
+    </exec>
+    <exec dir="${riak-dir}" executable="${riak-bin}">
+      <arg value="stop"/>
+    </exec>  	 
+  </target>
+
+  <target name="restart" depends="stop, start" description="Stops the running riak instance (if any). Start a new one."/>
+
+  <target name="clean" depends="stop" description="Stops the running riak instance (if any) and deletes the unzipped version of Riak and the donwloaded tar.gz." >
+    <delete dir="${riak-dir}"/>
+	<delete dir="${download}"/>
+  </target>
+</project>
